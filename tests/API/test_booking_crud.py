@@ -56,7 +56,6 @@ def test_update_with_invalid_token(api_client):
     import pytest
 
 
-# 2 теста ТОЛЬКО для проверки работы *fixtures/auth.py
 
 def test_auth_token_is_string(auth_token):
     assert isinstance(auth_token, str)

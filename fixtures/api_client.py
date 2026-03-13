@@ -1,15 +1,20 @@
+import logging
+import time
 import requests
 from requests.sessions import Session
 from config.settings import settings
 import pytest
 
+logger = logging.getLogger(__name__)
+
+
 class APIClient(Session):
-    def __init__(self, base_url: str, timeout: int, default_headers: dict):
+    def __init__(self, base_url: str, timeout: int, default_headers: dict) -> None:
         """
-        Создаёт экземпляр клиента с настройками.
-        
-        :param base_url: Базовый адрес API
-        :param timeout: Время ожидания ответа в секундах
+        Создание экземпляра клиента с предварительно настроенными параметрами.
+
+        :param base_url: Базовый URL API
+        :param timeout: Таймаут запроса по умолчанию в секундах
         :param default_headers: Заголовки по умолчанию для всех запросов
         """
         super().__init__()
@@ -17,17 +22,14 @@ class APIClient(Session):
         self.default_timeout = timeout
         self.headers.update(default_headers)
 
+    def request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """
+        Переопределение базового метода request для добавления префикса URL, таймаута и логирования.
 
-    def request(self, method: str, url: str, **kwargs):
-        """
-        Переопределяем базовый метод отправки запроса.
-        
-        Этот метод вызывается внутри .get(), .post(), .put() и др        
         :param method: HTTP-метод
-        :param url: Путь к эндпоинту 
-        :param kwargs: Дополнительные аргументы 
+        :param url: Путь эндпоинта или полный URL
+        :param kwargs: Дополнительные аргументы для requests
         """
-        
         if url.startswith(('http://', 'https://')):
             full_url = url
         else:
@@ -36,24 +38,29 @@ class APIClient(Session):
         if 'timeout' not in kwargs:
             kwargs['timeout'] = self.default_timeout
 
-        return super().request(method, full_url, **kwargs)
+        start = time.perf_counter()
+        response = super().request(method, full_url, **kwargs)
+        elapsed = time.perf_counter() - start
+
+        if logger.isEnabledFor(logging.INFO):
+            path = url if not url.startswith(('http://', 'https://')) else full_url
+            logger.info("%-6s %-25s → %s (%.2fs)", method, path, response.status_code, elapsed)
+
+        return response
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def api_client():
-    """
-    Фикстура создаёт APIClient для каждого теста.
-    """
-    
+    """Фикстура с областью видимости session, предоставляющая настроенный экземпляр APIClient."""
     client = APIClient(
-        base_url=settings.BASE_URL,           
-        timeout=settings.REQUEST_TIMEOUT,     
-        default_headers={                     
+        base_url=settings.BASE_URL,
+        timeout=settings.REQUEST_TIMEOUT,
+        default_headers={
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
     )
-    
+
     yield client
-    
+
     client.close()
